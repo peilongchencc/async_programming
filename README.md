@@ -224,7 +224,7 @@ if __name__ == "__main__":
 
 终端输出:<br>
 
-```txt
+```log
 <class 'list'>
 [0, 1, 4, 9, 16, 25]
 ```
@@ -252,7 +252,7 @@ if __name__ == "__main__":
 
 终端输出:<br>
 
-```txt
+```log
 <class 'int'>
 25
 ```
