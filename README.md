@@ -1,487 +1,710 @@
-# async_programming
+# asyncio
 
-- [async\_programming](#async_programming)
-  - [I/O 操作介绍:](#io-操作介绍)
-  - [异步编程:](#异步编程)
-    - [基本概念](#基本概念)
-    - [异步生成器:](#异步生成器)
-    - [异步网络I/O示例:](#异步网络io示例)
-      - [步骤 1: 引入必要的库](#步骤-1-引入必要的库)
-      - [步骤 2: 定义异步函数](#步骤-2-定义异步函数)
-      - [步骤 3: 创建主要的异步函数](#步骤-3-创建主要的异步函数)
-      - [步骤 4: 运行事件循环](#步骤-4-运行事件循环)
-      - [异步网络I/O完整代码:](#异步网络io完整代码)
-    - [异步文件 I/O 示例:](#异步文件-io-示例)
-  - [yield生成器的多种返回格式:](#yield生成器的多种返回格式)
-    - [生成器的常规使用:](#生成器的常规使用)
-    - [将生成器的所有结果收集到一个列表中并返回:](#将生成器的所有结果收集到一个列表中并返回)
-    - [返回最后一个生成的结果:](#返回最后一个生成的结果)
-  - [异步调用大模型接口返回答案示例:](#异步调用大模型接口返回答案示例)
-    - [情况描述:](#情况描述)
-    - [解决方案:](#解决方案)
-    - [数据串扰问题:](#数据串扰问题)
-    - [数据串扰问题解答:](#数据串扰问题解答)
-    - [工具函数和sanic路由不在同一个文件时的代码改动:](#工具函数和sanic路由不在同一个文件时的代码改动)
-    - [yield方式：](#yield方式)
+本项目概述了用于 **"协程(coroutines)"** 和 **"任务(tasks)"** 的高级 asyncio APIs。<br>
+- [asyncio](#asyncio)
+  - [写法示例:](#写法示例)
+    - [单 await 示例:](#单-await-示例)
+    - [多个 await 示例:](#多个-await-示例)
+  - [asyncio.create\_task():](#asynciocreate_task)
+    - [使用set管理任务:](#使用set管理任务)
+    - [强引用与弱引用:](#强引用与弱引用)
+    - [拓展:集合的discard(element)方法](#拓展集合的discardelement方法)
+    - [拓展:使用list管理任务](#拓展使用list管理任务)
+  - [asyncio.TaskGroup:](#asynciotaskgroup)
+  - [`.result()` 和 `await`的区别:](#result-和-await的区别)
+    - [`.result()`示例代码:](#result示例代码)
+    - [`await`示例代码:](#await示例代码)
+    - [总结:](#总结)
+  - [asyncio.gather](#asynciogather)
+    - [基本用法](#基本用法)
+    - [注意事项](#注意事项)
+    - [示例：处理异常](#示例处理异常)
+    - [示例2:展示同时计算的细节](#示例2展示同时计算的细节)
+    - [示例2拓展:阶乘的计算方式](#示例2拓展阶乘的计算方式)
+    - [示例3:`asyncio.create_task` 结合 `asyncio.gather`](#示例3asynciocreate_task-结合-asynciogather)
+  - [`asyncio.gather`、`asyncio.create_task` 和 `asyncio.TaskGroup`:](#asynciogatherasynciocreate_task-和-asynciotaskgroup)
+    - [总结:](#总结-1)
+  - [asyncio.timeout](#asynciotimeout)
+    - [使用示例:](#使用示例)
+    - [使用场景](#使用场景)
+    - [注意事项](#注意事项-1)
+  - [asyncio.wait](#asynciowait)
+    - [`asyncio.wait`函数签名:](#asynciowait函数签名)
+    - [参数](#参数)
+    - [返回值](#返回值)
 
-## I/O 操作介绍:
 
-I/O 是 "Input/Output" 的缩写，I/O 操作即输入/输出操作，是计算机程序与外界（例如用户、文件系统、网络等）进行数据交换的过程。这个术语通常用于描述两种主要类型的操作：<br>
+## 写法示例:
 
-1. **文件 I/O**：这涉及到读写文件系统上的文件。例如，当你的程序从硬盘上的文件中读取数据，或者向文件写入数据时，这就是文件 I/O 操作。这些操作通常涉及等待磁盘驱动器或者固态硬盘完成数据的读取或写入，这可能需要相对较长的时间。
+### 单 await 示例:
 
-2. **网络 I/O**：这指的是通过网络发送和接收数据。例如，当你的程序向服务器发送请求或从服务器接收数据时，这就是网络 I/O 操作。网络 I/O 通常涉及等待网络延迟和数据传输，这也可能是一个耗时的过程。
-
-I/O 操作通常是计算机程序中较慢的部分，因为它们依赖于外部系统（如硬盘、网络设备等），这些系统的速度通常比 CPU 和内存慢得多。**这就是为什么在进行 I/O 操作时，常常会使用异步编程技术。**异步编程允许程序在等待 I/O 操作完成时继续执行其他任务，从而提高程序的整体效率和响应性。🫠🫠🫠<br>
-
-
-## 异步编程:
-
-Python中的异步编程是一种编程范式，它允许程序在等待某些操作（如I/O操作）完成时继续执行其他任务。这在处理大量并发连接或高延迟操作时特别有用。Python从3.5版本开始引入了`async`和`await`关键字，使异步编程变得更加简单和直观。<br>
-
-### 基本概念
-
-1. **协程（Coroutine）**: 使用`async def`定义的函数。这种函数在调用时不会立即执行，而是返回一个协程对象。
-
-2. **事件循环（Event Loop）**: 管理并分配执行异步任务的机制。事件循环在后台运行，按照任务的就绪状态进行调度。
-
-3. **`await`**: 用于暂停协程的执行，直到等待的协程完成。在`await`之后的代码，只有在`await`的协程完成后才会执行。
-
-> 在函数内部，使用 `await` 来暂停函数的执行，直到等待的异步操作完成。
-
-### 异步生成器:
+例如，以下代码片段先打印“hello”，等待 1 秒钟，然后打印“world”：<br>
 
 ```python
 import asyncio
 
-async def async_generator():
-    for i in range(5):
-        await asyncio.sleep(1)
-        yield i
-
 async def main():
-    async for value in async_generator():
-        print(value)
+    print('hello')
+    await asyncio.sleep(1)
+    print('world')
 
-# 运行main函数
 asyncio.run(main())
 ```
 
-🚨🚨🚨注意:<br>
+终端输出:<br>
 
-不需要在 `main` 函数中使用 `await` 来等待 `async_generator` 完成，因为异步生成器的工作方式有所不同。<br>
+```log
+hello
+world
+```
 
-当你在 `main` 函数中使用 `async for` 循环来迭代 `async_generator` 产生的值时，**每次迭代都会自动处理等待**（如果有必要的话）。<br>
+请注意: 不使用 `asyncio.run()`，直接调用 `main()` 会报错。<br>
 
-在异步编程中，当你使用 `await` 时，你通常是在等待一个单独的异步操作（如异步函数调用）完成。但在使用异步生成器时，`async for` 循环会自动处理这些等待，不需要显式地在循环外部使用 `await`。<br>
+### 多个 await 示例:
 
-因此，你的 `main` 函数中不需要使用 `await async_generator()`。它通过 `async for` 循环正确地处理了异步生成器中的等待。<br>
-
-### 异步网络I/O示例:
-
-让我们通过一个简单的例子来理解这些概念：假设我们要异步地获取多个网页的内容。<br>
-
-#### 步骤 1: 引入必要的库
+以下代码片段将在等待 1 秒后打印“hello”，然后在再等待 2 秒后打印“world”：<br>
 
 ```python
 import asyncio
-import aiohttp
+import time
+
+async def say_after(delay, what):
+    await asyncio.sleep(delay)
+    print(what)
+
+async def main():
+    print(f"started at {time.strftime('%X')}")
+
+    await say_after(1, 'hello')
+    await say_after(2, 'world')
+
+    print(f"finished at {time.strftime('%X')}")
+
+asyncio.run(main())
 ```
 
-这里，`asyncio`是Python标准库中的异步I/O框架，`aiohttp`是一个支持异步请求的HTTP客户端。<br>
+终端输出如下:<br>
 
-#### 步骤 2: 定义异步函数
-
-```python
-async def fetch(session, url):
-    async with session.get(url) as response:
-        return await response.text()
+```log
+started at 17:13:52
+hello
+world
+finished at 17:13:55
 ```
 
-这个`fetch`函数是一个协程，它异步地获取给定URL的内容。<br>
 
-#### 步骤 3: 创建主要的异步函数
+## asyncio.create_task():
 
-```python
-async def main(urls):
-    async with aiohttp.ClientSession() as session:
-        tasks = [fetch(session, url) for url in urls]
-        return await asyncio.gather(*tasks)
-```
+`asyncio.create_task()` 函数用于将协程作为 asyncio 任务 **并发运行** 。让我们修改上面的例子，并发运行两个 `say_after` 协程：<br>
 
-`main`函数也是一个协程，它创建了多个`fetch`协程的任务，并且使用`asyncio.gather`来并发地运行它们。<br>
-
-#### 步骤 4: 运行事件循环
-
-```python
-urls = ["https://www.example.com", "https://www.example.org"]
-result = asyncio.run(main(urls))
-print(result)
-```
-
-这里使用`asyncio.run()`来运行主协程`main`。它会创建事件循环，运行协程，直到协程完成。<br>
-
-#### 异步网络I/O完整代码:
+> [!CAUTION]
+> 异步是一种实现并发的方法，但并发不一定是异步的。例如，多线程和多进程也是实现并发的方式。
 
 ```python
 import asyncio
-import aiohttp
+import time
 
-async def fetch(session, url):
-    async with session.get(url) as response:
-        return await response.text()
+async def say_after(delay, what):
+    await asyncio.sleep(delay)
+    print(what)
 
-async def main(urls):
-    async with aiohttp.ClientSession() as session:
-        tasks = [fetch(session, url) for url in urls]
-        return await asyncio.gather(*tasks)
+async def main():
+    task1 = asyncio.create_task(
+        say_after(1, 'hello'))
 
-urls = ["https://www.example.com", "https://www.example.org"]
-result = asyncio.run(main(urls))
-print(result)
+    task2 = asyncio.create_task(
+        say_after(2, 'world'))
+
+    print(f"started at {time.strftime('%X')}")
+
+    # 等待两个任务都完成（大约需要2秒钟）。
+    await task1
+    await task2
+
+    print(f"finished at {time.strftime('%X')}")
+
+asyncio.run(main())
 ```
 
-这个例子展示了Python异步编程的基本结构和步骤。你可以根据自己的需要修改这个例子，以适应不同的异步编程场景。<br>
+终端输出如下:<br>
+
+```log
+started at 17:14:32
+hello
+world
+finished at 17:14:34
+```
+
+🚨请注意，现在输出显示该代码片段比之前( **多个 await 示例** )快了1秒。<br>
+
+### 使用set管理任务:
+
+```python
+import asyncio
+
+# 定义一个示例协程函数
+async def some_coro(param):
+    await asyncio.sleep(3)  # 模拟异步操作
+    print(f"Task with param {param} completed")
+
+async def main():
+    """
+    - main 函数创建并启动了 10 个 some_coro 任务，并将每个任务添加到 background_tasks 集合中。
+    - 每个任务在完成后会通过 add_done_callback 从 background_tasks 集合中删除自己。
+    """
+    background_tasks = set()
+
+    for i in range(10):
+        task = asyncio.create_task(some_coro(param=i))
+
+        # 将任务添加到集合中。这会创建一个强引用。
+        background_tasks.add(task)
+
+        # 使用 add_done_callback 方法，为每个任务添加一个回调函数。在任务完成后，
+        # 这个回调函数会从 background_tasks 集合中删除任务，从而避免集合无限增长，导致内存泄漏。
+        task.add_done_callback(background_tasks.discard)
+
+    # 等待所有任务完成
+    await asyncio.gather(*background_tasks)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+> [!WARNING]
+> 将任务添加到集合 (background_tasks) 中不会影响任务的执行顺序。虽然集合是无序的，但任务的创建和调度顺序由事件循环 (event loop) 控制，不受集合顺序的影响。
+
+### 强引用与弱引用:
+
+1. **没有赋值（弱引用）**：
+
+当你创建任务而没有将其赋值给变量时，事件循环只保存对任务的弱引用。例如：<br>
+
+```python
+asyncio.create_task(some_coro(...))
+```
+
+在这种情况下，创建的任务没有被任何变量引用。如果没有其他地方引用这个任务，它可能会被垃圾回收机制回收，因为事件循环不会主动保留这些任务的强引用。<br>
+
+2. **赋值（强引用）**：
+
+当你创建任务并将其赋值给变量时，你创建了一个对任务的强引用。例如：<br>
+
+```python
+task1 = asyncio.create_task(some_coro(...))
+task2 = asyncio.create_task(another_coro(...))
+```
+
+在这种情况下，`task1` 和 `task2` 变量持有这些任务的强引用。只要这些变量在作用域内存在并且未被覆盖，这些任务就不会被垃圾回收。<br>
+
+### 拓展:集合的discard(element)方法
+
+`background_tasks` 是一个集合（set），而 `background_tasks.discard` 是集合对象上的一个方法。它的作用是从集合中移除指定的元素。如果该元素不存在于集合中，`discard` 方法不会引发错误或异常，这一点与 `remove` 方法不同。<br>
+
+```python
+background_tasks = {"task1", "task2", "task3"}
+
+# 使用 discard 移除一个元素
+background_tasks.discard("task2")
+
+print(background_tasks)
+# 输出: {'task1', 'task3'}
+
+# 使用 discard 移除一个不存在的元素，不会引发错误
+background_tasks.discard("task4")
+
+print(background_tasks)
+# 输出: {'task1', 'task3'}
+```
+
+### 拓展:使用list管理任务
+
+使用列表也是可以的，代码的逻辑不会改变。关键是跟踪所有创建的任务并等待它们完成。在这个例子中，set 和 list 都可以完成这个工作。
+
+```python
+import asyncio
+
+# 定义一个示例协程函数
+async def some_coro(param):
+    await asyncio.sleep(3)
+    print(f"Task with param {param} completed")
+
+async def main():
+    tasks = []
+
+    for i in range(10):
+        task = asyncio.create_task(some_coro(param=i))
+        tasks.append(task)
+        # 添加回调函数，任务完成后从列表中移除
+        task.add_done_callback(tasks.remove)
+
+    # 使用 asyncio.gather 等待所有任务完成
+    await asyncio.gather(*tasks)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+终端输出如下:<br>
+
+```log
+Task with param 0 completed
+Task with param 1 completed
+Task with param 2 completed
+Task with param 3 completed
+Task with param 4 completed
+Task with param 5 completed
+Task with param 6 completed
+Task with param 7 completed
+Task with param 8 completed
+Task with param 9 completed
+```
 
 
-在使用像 FastAPI 或 Sanic 这样的异步Web框架时，通常不需要使用 `asyncio.run()` 来启动异步函数。这些框架已经内置了异步事件循环的管理，因此当你在这些框架中定义异步路由处理函数时，它们会自动在其内部事件循环中运行这些异步函数。<br>
+## asyncio.TaskGroup:
 
-### 异步文件 I/O 示例:
+`asyncio.TaskGroup` 类提供了一种比 `create_task()` 更现代的替代方案。使用这个 API，`asyncio.create_task()` 中的示例变成了:<br>
 
-由于 Python 的标准库中并没有直接提供异步文件 I/O 的接口，我们通常需要使用像 `aiofiles` 这样的第三方库来实现异步文件读写。以下是一个异步读取文件的示例：<br>
+```python
+import asyncio
+import time
 
-首先，你需要安装 `aiofiles` 库：<br>
+async def say_after(delay, what):
+    await asyncio.sleep(delay)
+    print(what)
+
+async def main():
+    async with asyncio.TaskGroup() as tg:
+        task1 = tg.create_task(
+            say_after(1, 'hello'))
+
+        task2 = tg.create_task(
+            say_after(2, 'world'))
+
+        print(f"started at {time.strftime('%X')}")
+
+    # The await is implicit when the context manager exits.
+
+    print(f"finished at {time.strftime('%X')}")
+
+asyncio.run(main())
+```
+
+> [!WARNING]
+> `asyncio.TaskGroup` 和 `asyncio.create_task()` 的输出和耗时一致。
+
+
+## `.result()` 和 `await`的区别:
+
+### `.result()`示例代码:
+
+```python
+import asyncio
+
+async def task1():
+    print("Task 1 started")
+    await asyncio.sleep(2)
+    print("Task 1 completed")
+    return "Result from task 1"
+
+async def task2():
+    print("Task 2 started")
+    await asyncio.sleep(1)
+    print("Task 2 completed")
+    return "Result from task 2"
+
+async def main():
+    async with asyncio.TaskGroup() as tg:
+        t1 = tg.create_task(task1())
+        t2 = tg.create_task(task2())
+
+    # 在 TaskGroup 结束后，我们可以获取任务的结果
+    print(f"Task 1 result: {t1.result()}")
+    print(f"Task 2 result: {t2.result()}")
+
+asyncio.run(main())
+```
+
+### `await`示例代码:
+
+```python
+import asyncio
+
+async def task1():
+    print("Task 1 started")
+    await asyncio.sleep(2)
+    print("Task 1 completed")
+    return "Result from task 1"
+
+async def task2():
+    print("Task 2 started")
+    await asyncio.sleep(1)
+    print("Task 2 completed")
+    return "Result from task 2"
+
+async def main():
+    async with asyncio.TaskGroup() as tg:
+        t1 = tg.create_task(task1())
+        t2 = tg.create_task(task2())
+
+    # 在 TaskGroup 结束后，我们可以获取任务的结果
+    result1 = await t1
+    result2 = await t2
+
+    print(f"Task 1 result: {result1}")
+    print(f"Task 2 result: {result2}")
+
+asyncio.run(main())
+```
+
+### 总结:
+
+在 `async with asyncio.TaskGroup() as tg:` 结束时，所有任务都已经完成，所以在这之后使用 `await t1` 和 `await t2` 实际上不会再等待什么，因为任务已经完成了。它们只是用于获取任务的结果。<br>
+
+这样说来，确实没有必要在 `async with` 块结束后再使用 `await` 去等待任务完成，因为任务已经完成了。直接使用 `task.result()` 方法来获取结果会更简洁和直观。<br>
+
+代码逻辑：<br>
+
+1. `task1 = tg.create_task(task1())` 和 `task2 = tg.create_task(task2())` 创建并启动了两个任务。
+2. 在 `async with asyncio.TaskGroup() as tg:` 块结束时，所有任务都已经完成。
+3. 我们直接使用 `task1.result()` 和 `task2.result()` 获取任务的结果，而不需要再次 `await`。
+
+这种方式更加简洁和直观，避免了不必要的 `await`。因此，使用 `result()` 方法在 `async with` 块结束后直接获取任务结果是更好的选择。<br>
+
+
+## asyncio.gather
+
+**`asyncio.gather` 是 Python `asyncio` 库中用于并行执行多个协程的函数。** 它能够同时运行多个异步任务并在所有任务完成后返回结果。以下是 `asyncio.gather` 的详细使用方法和注意事项。<br>
+
+### 基本用法
+
+```python
+import asyncio
+
+async def foo(x):
+    await asyncio.sleep(x)
+    return f"foo: {x}"
+
+async def bar(y):
+    await asyncio.sleep(y)
+    return f"bar: {y}"
+
+async def main():
+    results = await asyncio.gather(
+        foo(1),
+        bar(2),
+        foo(3)
+    )
+    print(results)
+
+asyncio.run(main())
+```
+
+在上面的示例中，`foo` 和 `bar` 函数是两个异步任务。`asyncio.gather` 同时运行这些任务，并在它们全部完成后返回结果的列表。<br>
+
+### 注意事项
+
+1. **任务并行执行**：
+
+- `asyncio.gather` 可以让多个协程并行执行，减少总的执行时间。例如，在上面的示例中，总的执行时间将是所有任务中最长的一个，而不是所有任务时间的总和。
+
+2. **返回结果顺序**：
+
+- `asyncio.gather` 返回一个结果列表，结果的顺序与传入 `gather` 中的协程顺序一致，而不是完成的顺序。
+
+3. **异常处理**：
+
+- 如果 `gather` 中的一个任务引发异常，默认情况下，`gather` 将立即引发此异常并取消所有剩余的任务(默认 `return_exceptions=False`)。可以通过传递 `return_exceptions=True` 参数让 `gather` 在返回结果列表时包含异常对象而不是引发它们。
+
+```python
+async def main():
+    results = await asyncio.gather(
+        foo(1),
+        bar(2),
+        foo(3),
+        return_exceptions=True
+    )
+    print(results)
+```
+
+4. **取消任务**：
+
+- 如果 `gather` 自身被取消，则所有收集到的协程也会被取消。
+
+5. **性能注意事项**：
+
+- 虽然 `asyncio.gather` 可以并行执行多个任务，但并不适用于 I/O 密集型操作（如文件读写、网络请求等）。对于这些场景，可以考虑使用 `concurrent.futures.ThreadPoolExecutor` 或 `concurrent.futures.ProcessPoolExecutor` 来实现真正的并行。
+
+### 示例：处理异常
+
+```python
+import asyncio  # 引入异步编程模块 asyncio
+
+# 定义一个异步函数 foo，接受一个参数 x
+async def foo(x):
+    await asyncio.sleep(x)  # 异步等待 x 秒
+    return f"foo: {x}"  # 返回一个字符串，格式为 "foo: x"
+
+# 定义另一个异步函数 bar，接受一个参数 y
+async def bar(y):
+    await asyncio.sleep(y)  # 异步等待 y 秒
+    return f"bar: {y}"  # 返回一个字符串，格式为 "bar: y"
+
+# 定义一个有错误的异步任务函数 faulty_task
+async def faulty_task():
+    await asyncio.sleep(1)  # 异步等待 1 秒
+    raise ValueError("An error occurred")  # 抛出一个 ValueError 异常
+
+# 定义主异步函数 main
+async def main():
+    try:
+        # 使用 asyncio.gather 并行运行多个异步任务
+        # return_exceptions=True 表示即使有任务抛出异常，也不会立即终止
+        results = await asyncio.gather(
+            foo(1),  # 执行 foo(1) 任务
+            faulty_task(),  # 执行 faulty_task() 任务
+            bar(2),  # 执行 bar(2) 任务
+            return_exceptions=True  # 出现异常时返回异常而不是中断程序
+        )
+        
+        print(results, type(results))  # 打印结果和结果的类型
+        
+        for result in results:  # 遍历每个结果
+            if isinstance(result, Exception):  # 如果结果是异常
+                print(f"Task raised an exception: {result}")  # 打印异常信息
+            else:
+                print(f"Task result: {result}")  # 打印任务返回的结果
+    except Exception as e:  # 捕获所有其他异常
+        print(f"Exception: {e}")  # 打印异常信息
+
+asyncio.run(main())  # 运行主异步函数 main
+```
+
+终端输出如下:<br>
+
+```log
+['foo: 1', ValueError('An error occurred'), 'bar: 2'] <class 'list'>
+Task result: foo: 1
+Task raised an exception: An error occurred
+Task result: bar: 2
+```
+
+在这个示例中，即使 `faulty_task` 引发了异常，`asyncio.gather` 也会返回所有任务的结果（包括异常对象），这样你可以在程序中处理它们。<br>
+
+通过理解 `asyncio.gather` 的用法和注意事项，可以有效地并行执行多个异步任务，并在实际项目中合理应用这一强大的功能。<br>
+
+
+### 示例2:展示同时计算的细节
+
+```python
+import asyncio
+
+async def factorial(name, number):
+    """计算num的阶乘"""
+    f = 1   # 初始化阶乘结果为1
+    for i in range(2, number + 1):
+        print(f"任务 {name}: 计算({number})的阶乘, 当前 i={i}...")
+        # 异步休眠1秒，以模拟计算过程中可能的等待时间
+        await asyncio.sleep(1)
+        # 更新阶乘结果
+        f *= i
+    print(f"任务 {name}: ({number})的阶乘 = {f}")
+    return f
+
+async def main():
+    # 安排三次调用同时进行
+    L = await asyncio.gather(
+        factorial("A", 2),
+        factorial("B", 3),
+        factorial("C", 4),
+    )
+    print(L)
+
+asyncio.run(main())
+```
+
+运行上述代码后，将依次显示下列内容，从输出中可以准确看到 **"同时运行"(并发)** 的效果:<br>
+
+```log
+任务 A: 计算(2)的阶乘, 当前 i=2...
+任务 B: 计算(3)的阶乘, 当前 i=2...
+任务 C: 计算(4)的阶乘, 当前 i=2...
+```
+
+```log
+任务 A: (2)的阶乘 = 2
+```
+
+```log
+任务 B: 计算(3)的阶乘, 当前 i=3...
+任务 C: 计算(4)的阶乘, 当前 i=3...
+```
+
+```log
+任务 B: (3)的阶乘 = 6
+```
+
+```log
+任务 C: 计算(4)的阶乘, 当前 i=4...
+```
+
+```log
+任务 C: (4)的阶乘 = 24
+```
+
+```log
+[2, 6, 24]
+```
+
+### 示例2拓展:阶乘的计算方式
+
+阶乘（Factorial）是对一个正整数n的所有正整数（包括n本身）相乘的结果，记作n!。<br>
+
+2的阶乘是2，3的阶乘是6，4的阶乘是24。具体计算如下：<br>
+
+2! = 2 x 1 = 2<br>
+
+3! = 3 x 2 x 1 = 6<br>
+
+4! = 4 x 3 x 2 x 1 = 24<br>
+
+### 示例3:`asyncio.create_task` 结合 `asyncio.gather`
+
+```python
+import asyncio
+
+# 定义一个异步协程函数 coro1
+# 该函数会等待1秒钟，然后返回字符串 "Result 1"
+async def coro1():
+    await asyncio.sleep(1)
+    return "Result 1"
+
+# 定义另一个异步协程函数 coro2
+# 该函数会等待2秒钟，然后返回字符串 "Result 2"
+async def coro2():
+    await asyncio.sleep(2)
+    return "Result 2"
+
+# 定义主异步函数 main
+async def main():
+    # 创建任务 task1，运行异步协程 coro1
+    task1 = asyncio.create_task(coro1())
+    # 创建任务 task2，运行异步协程 coro2
+    task2 = asyncio.create_task(coro2())
+    # 使用 asyncio.gather 等待所有任务完成，并将结果存储在 results 变量中
+    results = await asyncio.gather(task1, task2)
+    # 打印任务的结果
+    print(f"Results: {results}")
+
+# 使用 asyncio.run 运行主函数 main
+asyncio.run(main())
+```
+
+等待2秒中后，终端输出如下:<br>
+
+```log
+Results: ['Result 1', 'Result 2']
+```
+
+
+## `asyncio.gather`、`asyncio.create_task` 和 `asyncio.TaskGroup`:
+
+1. `asyncio.create_task`:
+
+`asyncio.create_task` 创建并调度一个单独的任务，立即返回一个 `Task` 对象。这个对象可以在稍后进行操作或等待其完成。<br>
+
+2. `asyncio.gather`:
+
+`asyncio.gather` 是一种方便的方式，用于并行运行多个协程并收集它们的结果。它会等待所有传递的协程完成，并返回一个包含所有结果的列表。<br>
+
+3. `asyncio.TaskGroup`:
+
+`asyncio.TaskGroup` 是 Python 3.11 引入的一个新特性，用于更直观和灵活地管理一组任务。它提供了更清晰的任务管理和错误处理机制。<br>
+
+### 总结:
+
+这三种方式都能实现并行化，但 `asyncio.TaskGroup` 是最优选择，`asyncio.TaskGroup` 在许多情况下提供了更好的管理任务并行执行的方式，特别是在复杂任务管理和错误处理方面。<br>
+
+
+## asyncio.timeout
+
+在Python 3.11及其后续版本中，引入了一个新的异步上下文管理器`asyncio.timeout`，用于处理异步操作的超时。这个特性允许你更简洁地设置超时，并在超时发生时自动取消任务。<br>
+
+### 使用示例:
+
+```python
+import asyncio
+
+async def my_coroutine():
+    print("Task started")
+    await asyncio.sleep(5)  # 模拟一个耗时5秒的异步任务
+    print("Task finished")
+
+async def main():
+    try:
+        async with asyncio.timeout(3):  # 设置超时时间为3秒
+            await my_coroutine()
+    except asyncio.TimeoutError:
+        print("The task took too long and was cancelled")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+终端输出如下:<br>
+
+```log
+Task started
+The task took too long and was cancelled
+```
+
+> [!IMPORTANT]
+> `asyncio.timeout()` 上下文管理器会将 `asyncio.CancelledError` 转换为 `TimeoutError`。
+
+### 使用场景
+
+1. **网络请求**：在执行可能长时间等待的网络请求时，可以使用超时来防止程序挂起。
+
+2. **并发任务**：在并发任务中，避免单个任务的长时间运行影响整体进度。
+
+3. **资源获取**：在获取外部资源（如数据库连接）时，设置超时来确保资源及时释放。
+
+### 注意事项
+
+- `asyncio.timeout` 只能用于异步上下文中。
+
+- 它在超时发生时会取消当前任务，这意味着如果你有多个并发任务，需要确保它们的取消处理是安全的。
+
+这个新特性使得处理异步超时更加简洁和直观，相比于以前使用`asyncio.wait_for`的方式，有了更好的代码可读性和维护性。<br>
+
+
+## asyncio.wait
+
+`asyncio.wait` 用于协同多个异步操作，它允许您等待一个或多个协程完成，并可以指定完成的条件（例如，所有协程都完成，或任意一个协程完成）。<br>
+
+### `asyncio.wait`函数签名:
 
 ```bash
-pip install aiofiles
+asyncio.wait(aws, *, timeout=None, return_when=ALL_COMPLETED)
 ```
 
-然后，可以使用以下代码进行异步文件读取：<br>
+> [!CAUTION]
+> asyncio.wait 只是确保在至少一个任务完成时返回，而不会取消其他未完成的任务。为避免程序延迟退出，需要取消其他任务。
 
-```python
-import asyncio
-import aiofiles
 
-async def read_file_async(file_path):
-    async with aiofiles.open(file_path, mode='r') as f:
-        contents = await f.read()
-        print(contents)
+### 参数
 
-async def main():
-    await read_file_async('example.txt')
+- **`aws(awaitables)`**: 任务的集合或列表（python 3.11后禁止传递协程），这些任务集合/列表将在 `asyncio.wait` 中被等待完成。
 
-# 运行事件循环
-asyncio.run(main())
-```
+- **`timeout`** (可选): 超时时间（以秒为单位）。如果设置了超时，`asyncio.wait` 将在指定时间内返回，即使一些任务尚未完成。
 
-在这个示例中，`read_file_async` 函数是一个协程，它使用 `aiofiles` 异步打开和读取文件。`main` 函数则是用来启动异步操作的入口点。最后，使用 `asyncio.run(main())` 启动事件循环并执行 `main` 函数。<br>
+- **`return_when`** (可选): 指定函数何时返回。可以是以下常量之一：
+  - `asyncio.ALL_COMPLETED`: 所有任务完成时返回（默认值）。
+  - `asyncio.FIRST_COMPLETED`: 任意一个任务完成时返回。
+  - `asyncio.FIRST_EXCEPTION`: 任意一个任务抛出异常时返回。
 
-这种方法可以在文件读取进行时，让程序继续执行其他任务，从而提高程序的整体效率。<br>
+### 返回值
 
-
-## yield生成器的多种返回格式:
-
-### 生成器的常规使用:
-
-```python
-def squares_generator(n):
-    for i in range(n):
-        yield i ** 2
-
-if __name__ == "__main__":
-    # 遍历生成器
-    for square in squares_generator(5):
-        print(square)
-```
-
-终端输出:<br>
-
-```txt
-0
-1
-4
-9
-16
-```
-
-### 将生成器的所有结果收集到一个列表中并返回:
-
-```python
-def squares_generator(n):
-    for i in range(n):
-        yield i ** 2
-
-def all_squares(n):
-    """将生成器的所有结果收集到一个列表中并返回
-    """
-    return list(squares_generator(n))
-
-if __name__ == "__main__":
-    res = all_squares(6)
-    print(type(res))
-    print(res)
-```
-
-终端输出:<br>
-
-```log
-<class 'list'>
-[0, 1, 4, 9, 16, 25]
-```
-
-### 返回最后一个生成的结果:
-
-```python
-def squares_generator(n):
-    for i in range(n):
-        yield i ** 2
-
-def last_square(n):
-    """遍历生成器生成的所有结果，并在每次迭代中更新 last 变量。最后，函数会返回最后一个生成的结果
-    """
-    last = None
-    for square in squares_generator(n):
-        last = square
-    return last
-
-if __name__ == "__main__":
-    res = last_square(6)
-    print(type(res))
-    print(res)
-```
-
-终端输出:<br>
-
-```log
-<class 'int'>
-25
-```
-
-## 异步调用大模型接口返回答案示例:
-
-### 情况描述:
-
-我使用的python，我的函数如下，函数中需要调用大模型接口，大模型接口支持的并行数为5。当前我使用的request的post方式连接的大模型接口，我是不是应该将`request`改为`aiohttp`的post方式？我这个函数也需要写成异步的形式吗？我使用的sanic，sanic的`/answer`路由会调用我这个函数，sanic应该怎样调用这个函数呢？<br>
-
-### 解决方案:
-
-你的函数 `con_aichatbot` 用于连接一个大型模型的API，并通过HTTP POST请求发送数据。目前，你使用的是 `requests` 库，这是一个同步的HTTP客户端。当你的应用程序需要处理并发请求时，特别是当你需要同时向大模型接口发送多个请求时，使用异步的HTTP客户端会更有效，比如 `aiohttp`。<br>
-
-由于大模型接口支持的并行数为5，你确实可以考虑将 `requests` 改为 `aiohttp`。`aiohttp` 是基于异步I/O的，这意味着在等待HTTP响应时，你的程序可以继续执行其他任务。这在处理多个并行请求时特别有用。<br>
-
-同时，你的函数也需要改写为异步的形式。这样，你可以在函数内部使用 `await` 关键字调用异步的HTTP请求，而不会阻塞整个程序的运行。<br>
-
-另外，你提到你使用的是 Sanic，这是一个异步的Web框架。在 Sanic 中调用异步函数非常简单。你只需要在定义路由处理函数时添加 `async` 关键字，然后在其中使用 `await` 调用你的异步函数。这样，Sanic 可以在处理请求时保持其异步特性。<br>
-
-修改后的函数和Sanic路由调用示例如下：<br>
-
-```python
-import aiohttp
-import json
-
-async def con_aichatbot(access_token=None, channel_id=None, sign=None, timestamp=None, user_input=None):
-    if access_token and channel_id and sign and timestamp and user_input:
-        # In the context of task-oriented multi-turn dialogues, Alibaba's general-purpose robot automatically differentiates, so there's no need for me to make the distinction.
-        data = {'messageId': '1', 
-                'action': 'TongyiBeebotChat', 
-                'version': '2022-04-08', 
-                'data': [{'type': 'JSON_TEXT', 
-                          'value': '{"InstanceId":"chatbot-cn-fa6mVnFBmb","Utterance":"' + user_input + '"}',
-                          'SandBox': 'false'
-                          }]}
-        # The `SandBox` parameter indicates whether the environment is a testing or production environment, with the default being the production environment.
-        # `'SandBox': 'true'` signifies a testing environment.
-        # `'SandBox': 'false'` denotes a production environment.
-        
-        url = (
-            f"https://alime-ws.aliyuncs.com/sse/paas4Json/"
-            f"{access_token}/"
-            f"{channel_id}/"
-            f"{sign}/"
-            f"{timestamp}"
-        )
-        header = {
-            'Accept': 'text/event-stream'
-        }
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=data, headers=header) as response:
-                    response.raise_for_status()
-                    complete_output = None
-                    async for line in response.content:
-                        line = line.decode('utf-8')
-                        # Modify the condition for when 'line' is empty to avoid parsing the situation where `line=''`.
-                        if line and line != '' and line.startswith('data:'):
-                            data_content = line.replace('data:', '')
-                            data_content = data_content.strip()
-                            data_content_dict = json.loads(data_content)
-                            print(f"当前requestId为:{data_content_dict['requestId']}")
-                            value = json.loads(data_content_dict["data"][0]["value"])
-                            if value.get("MessageBody"):
-                                sentence_list = value["MessageBody"]["DirectMessageBody"]["SentenceList"]
-                                complete_output = process_sentence_list(sentence_list)
-
-        except Exception as e:
-            print("连接大模型时出错：", e)
-        
-        return complete_output
-
-# 在Sanic中使用该函数
-from sanic import Sanic, response
-
-app = Sanic("MyApp")
-
-@app.route("/answer", methods=['POST'])
-async def answer(request):
-    data = request.json
-    # 假设data包含了所需的所有参数
-    output = await con_aichatbot(
-        access_token=data.get("access_token"),
-        channel_id=data.get("channel_id"),
-        # ... 其他参数
-    )
-    return response.json({"reply": output})
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
-```
-
-这里有几点需要注意：<br>
-
-1. `aiohttp.ClientSession()` 用于创建一个异步HTTP会话。
-
-2. 使用 `async with` 语法确保资源被正确地管理和释放。
-
-3. `await` 用于等待异步操作完成。
-
-4. 在Sanic中定义路由时使用 `async` 和 `await` 以保持异步性。
-
-### 数据串扰问题:
-
-使用你的代码，多个用户同时请求，不会出现用户A的问题返回的是用户B的答案吧，不会串了吧？<br>
-
-### 数据串扰问题解答:
-
-使用我提供的代码，多个用户同时发送请求时，不会发生用户A的问题得到用户B答案的情况。这是因为每个请求都是独立处理的，每个请求都会创建自己的异步上下文并执行。这就是异步编程的优势之一：**即使在并发请求的情况下，也能保持每个请求的数据隔离。**<br>
-
-在异步编程中，每当一个新的请求到达，Sanic 会为这个请求创建一个新的协程（coroutine）。每个协程都是独立的，并且拥有自己的局部变量和状态。因此，即使有多个请求并发执行，它们各自的数据（如请求参数、局部变量等）也是相互隔离的。<br>
-
-在你的应用场景中，当 `con_aichatbot` 函数被调用时，它会处理传入的参数（例如 `access_token`、`channel_id`、`sign`、`timestamp` 和 `user_input`），这些参数都是请求特有的。因此，每个请求都会根据其特定的输入处理并生成独立的输出。<br>
-
-总之，在你的使用场景中，使用异步编程和 Sanic 框架，可以确保即使在高并发的情况下，每个用户的请求都是独立处理的，不会发生数据串扰的问题。<br>
-
-### 工具函数和sanic路由不在同一个文件时的代码改动:
-
-如果你的函数和 Sanic 路由不在同一个文件中，你可以通过导入模块的方式来使用这些函数。这是 Python 中常见的做法，可以帮助你组织和模块化代码。以下是一个简单的示例，展示了如何在不同的文件中定义函数和路由，并将它们整合在一起。<br>
-
-假设你有两个文件：一个是包含 `con_aichatbot` 函数的文件（我们称之为 `aichatbot.py`），另一个是定义 Sanic 应用和路由的文件（我们称之为 `app.py`）。<br>
-
-1. **aichatbot.py**:
-
-```python
-# 异步函数定义
-async def con_aichatbot(access_token=None, channel_id=None, sign=None, timestamp=None, user_input=None):
-    # ... 函数实现 ...
-```
-
-2. **app.py**:
-
-```python
-from sanic import Sanic, response
-# 从其他文件导入异步函数
-from aichatbot import con_aichatbot
-
-app = Sanic("MyApp")
-
-@app.route("/answer", methods=['POST'])
-async def answer(request):
-    data = request.json
-    # 调用异步函数
-    output = await con_aichatbot(
-        access_token=data.get("access_token"),
-        channel_id=data.get("channel_id"),
-        # ... 其他参数 ...
-    )
-    return response.json({"reply": output})
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
-```
-
-在这个例子中，`aichatbot.py` 包含了你的异步函数 `con_aichatbot`，而 `app.py` 包含了 Sanic 应用和路由的定义。你可以在 `app.py` 中通过 `from aichatbot import con_aichatbot` 来导入 `aichatbot.py` 中定义的函数。<br>
-
-这种组织方式不仅有助于保持代码的清晰和模块化，而且也确保了不同文件中的代码可以相互调用。当你的项目规模增长时，这种模块化的方法特别有用。<br>
-
-
-### yield方式：
-
-```python
-import aiohttp
-import json
-
-async def con_aichatbot(access_token=None, channel_id=None, sign=None, timestamp=None, user_input=None):
-    if access_token and channel_id and sign and timestamp and user_input:
-        # In the context of task-oriented multi-turn dialogues, Alibaba's general-purpose robot automatically differentiates, so there's no need for me to make the distinction.
-        data = {'messageId': '1', 
-                'action': 'TongyiBeebotChat', 
-                'version': '2022-04-08', 
-                'data': [{'type': 'JSON_TEXT', 
-                          'value': '{"InstanceId":"chatbot-cn-fa6mVnFBmb","Utterance":"' + user_input + '"}',
-                          'SandBox': 'false'
-                          }]}
-        # The `SandBox` parameter indicates whether the environment is a testing or production environment, with the default being the production environment.
-        # `'SandBox': 'true'` signifies a testing environment.
-        # `'SandBox': 'false'` denotes a production environment.
-        
-        url = (
-            f"https://alime-ws.aliyuncs.com/sse/paas4Json/"
-            f"{access_token}/"
-            f"{channel_id}/"
-            f"{sign}/"
-            f"{timestamp}"
-        )
-        header = {
-            'Accept': 'text/event-stream'
-        }
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=data, headers=header) as response:
-                    response.raise_for_status()
-                    async for line in response.content:
-                        line = line.decode('utf-8')
-                        # Modify the condition for when 'line' is empty to avoid parsing the situation where `line=''`.
-                        if line and line != '' and line.startswith('data:'):
-                            data_content = line.replace('data:', '')
-                            data_content = data_content.strip()
-                            data_content_dict = json.loads(data_content)
-                            print(f"当前requestId为:{data_content_dict['requestId']}")
-                            value = json.loads(data_content_dict["data"][0]["value"])
-                            if value.get("MessageBody"):
-                                sentence_list = value["MessageBody"]["DirectMessageBody"]["SentenceList"]
-                                rtn = process_sentence_list(sentence_list)
-                                yield rtn
-
-        except Exception as e:
-            print("连接大模型时出错：", e)
-
-# 在Sanic中使用该函数
-from sanic import Sanic, response
-
-app = Sanic("MyApp")
-
-@app.route("/answer", methods=['POST'])
-async def answer(request):
-    data = request.json
-    # 假设data包含了所需的所有参数
-    output = await con_aichatbot(
-        access_token=data.get("access_token"),
-        channel_id=data.get("channel_id"),
-        # ... 其他参数
-    )
-    return response.json({"reply": output})
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
-```
+- 返回一个元组 `(done, pending)`，其中：
+  - `done` 是已完成的任务的集合。
+  - `pending` 是尚未完成的任务的集合。
