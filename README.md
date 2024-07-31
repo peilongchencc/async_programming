@@ -32,6 +32,9 @@
     - [`asyncio.wait`函数签名:](#asynciowait函数签名)
     - [参数](#参数)
     - [返回值](#返回值)
+    - [示例代码--手动管理任务的取消和清理:](#示例代码--手动管理任务的取消和清理)
+    - [示例代码--自动管理任务的取消和清理(推荐):](#示例代码--自动管理任务的取消和清理推荐)
+    - [使用 FIRST\_COMPLETED 时不取消任务的影响:](#使用-first_completed-时不取消任务的影响)
 
 
 ## 写法示例:
@@ -680,17 +683,13 @@ The task took too long and was cancelled
 
 ## asyncio.wait
 
-`asyncio.wait` 用于协同多个异步操作，它允许您等待一个或多个协程完成，并可以指定完成的条件（例如，所有协程都完成，或任意一个协程完成）。<br>
+`asyncio.wait` 用于协同多个异步操作，它允许您等待一个或多个任务完成，并可以指定完成的条件（例如，所有任务都完成，或任意一个任务完成）。<br>
 
 ### `asyncio.wait`函数签名:
 
 ```bash
 asyncio.wait(aws, *, timeout=None, return_when=ALL_COMPLETED)
 ```
-
-> [!CAUTION]
-> asyncio.wait 只是确保在至少一个任务完成时返回，而不会取消其他未完成的任务。为避免程序延迟退出，需要取消其他任务。
-
 
 ### 参数
 
@@ -703,8 +702,181 @@ asyncio.wait(aws, *, timeout=None, return_when=ALL_COMPLETED)
   - `asyncio.FIRST_COMPLETED`: 任意一个任务完成时返回。
   - `asyncio.FIRST_EXCEPTION`: 任意一个任务抛出异常时返回。
 
+> [!CAUTION]
+> `asyncio.FIRST_COMPLETED` 只是确保在至少一个任务完成时返回，而不会取消其他未完成的任务。为避免程序延迟退出，需要取消其他任务。
+
 ### 返回值
 
 - 返回一个元组 `(done, pending)`，其中：
   - `done` 是已完成的任务的集合。
   - `pending` 是尚未完成的任务的集合。
+
+### 示例代码--手动管理任务的取消和清理:
+
+```python
+import asyncio
+import time
+
+async def coro_task(n):
+    print(f"执行任务{n}")
+    await asyncio.sleep(n)
+    return n
+
+async def main():
+    """
+    Notes:
+        1. 如果不使用`async with asyncio.TaskGroup() as tg`，需要在代码最后执行 `await asyncio.wait(pending)`，让取消的任务完全取消。
+        如果不等待这些取消的任务完成，可能会导致一些未预料的行为，例如任务在之后的代码执行时仍然处于未完成状态，影响其他协程或事件循环的正常运行。
+    """
+    start_time = time.time()  # 记录开始时间
+
+    tasks = [
+        asyncio.create_task(coro_task(1)),
+        asyncio.create_task(coro_task(2)),
+        asyncio.create_task(coro_task(3))
+    ]
+    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    
+    print("Done tasks:")
+    for task in done:
+        print(task.result())
+
+    # 取消所有未完成的任务(如果不需要其他任务的结果，必须取消任务，否则函数会延迟退出。)
+    for task in pending:
+        task.cancel()
+
+    # 等待取消的任务完成
+    await asyncio.wait(pending)
+
+    end_time = time.time()  # 记录结束时间
+    print(f"总体执行时长: {end_time - start_time:.2f}秒")
+
+asyncio.run(main())
+```
+
+终端输出如下:<br>
+
+```log
+执行任务1
+执行任务2
+执行任务3
+Done tasks:
+1
+总体执行时长: 1.00秒
+```
+
+可以看到，代码一共执行了一秒，只获取了最快的任务的输出结果。<br>
+
+### 示例代码--自动管理任务的取消和清理(推荐):
+
+```python
+import asyncio
+import time
+
+async def coro_task(n):
+    print(f"执行任务{n}")
+    await asyncio.sleep(n)
+    return n
+
+async def main():
+    start_time = time.time()  # 记录开始时间
+
+    # asyncio.TaskGroup() 会在退出时自动等待并清理所有任务，包括已取消的任务。
+    # 不需要再调用 await asyncio.wait(pending) 清理已取消的任务。
+    async with asyncio.TaskGroup() as tg:
+        task1 = tg.create_task(coro_task(1))
+        task2 = tg.create_task(coro_task(2))
+        task3 = tg.create_task(coro_task(3))
+        
+        done, pending = await asyncio.wait(
+            {task1, task2, task3}, return_when=asyncio.FIRST_COMPLETED
+        )
+        
+        print("Done tasks:")
+        for task in done:
+            print(task.result())
+
+        # 取消所有未完成的任务(如果不需要其他任务的结果，必须取消任务，否则函数会延迟退出。)
+        for task in pending:
+            task.cancel()
+
+    end_time = time.time()  # 记录结束时间
+    print(f"总体执行时长: {end_time - start_time:.2f}秒")
+
+asyncio.run(main())
+```
+
+终端输出如下:<br>
+
+```log
+执行任务1
+执行任务2
+执行任务3
+Done tasks:
+1
+总体执行时长: 1.00秒
+```
+
+### 使用 FIRST_COMPLETED 时不取消任务的影响:
+
+```python
+import asyncio
+import time
+
+async def coro_task(n):
+    print(f"执行任务{n}")
+    await asyncio.sleep(n)
+    return n
+
+async def main():
+    start_time = time.time()  # 记录开始时间
+
+    # asyncio.TaskGroup() 会在退出时自动等待并清理所有任务，包括已取消的任务。
+    # 不需要再调用 await asyncio.wait(pending) 清理已取消的任务。
+    async with asyncio.TaskGroup() as tg:
+        task1 = tg.create_task(coro_task(1))
+        task2 = tg.create_task(coro_task(2))
+        task3 = tg.create_task(coro_task(3))
+        
+        done, pending = await asyncio.wait(
+            {task1, task2, task3}, return_when=asyncio.FIRST_COMPLETED
+        )
+        
+        print("Done tasks:")
+        for task in done:
+            print(task.result())
+
+        # 取消所有未完成的任务(如果不需要其他任务的结果，必须取消任务，否则函数会延迟退出。)
+        # for task in pending:
+        #     task.cancel()
+
+    end_time = time.time()  # 记录结束时间
+    print(f"总体执行时长: {end_time - start_time:.2f}秒")
+
+asyncio.run(main())
+```
+
+终端输出逻辑如下:<br>
+
+瞬间输出:<br>
+
+```log
+执行任务1
+执行任务2
+执行任务3
+```
+
+1秒后输出:<br>
+
+```log
+Done tasks:
+1
+```
+
+再经过2秒输出:<br>
+
+```log
+总体执行时长: 3.00秒
+```
+
+🚨终端在执行结束最快的任务后，返回了结果，但由于协程中还有其他任务(虽然这些任务的结果不返回)，所以函数会一直等到所有任务执行结束才退出。<br>
